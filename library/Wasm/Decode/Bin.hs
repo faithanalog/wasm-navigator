@@ -179,8 +179,9 @@ memarg = liftA2 MemArg u32 u32
 instr :: Parser Instr
 instr = do
   i <- P.anyWord8
-  case i of
+  case i
     -- Control
+        of
     0x00 -> pure IUnreachable
     0x01 -> pure INop
     0x02 -> do
@@ -201,8 +202,9 @@ instr = do
     0x05 -> do
       rt <- blocktype
       insT <- fmap Vector.fromList (many instr)
-      insF <- 
-        (P.skip (== 0x05) *> fmap Vector.fromList (many instr)) <|> pure Vector.empty
+      insF <-
+        (P.skip (== 0x05) *> fmap Vector.fromList (many instr)) <|>
+        pure Vector.empty
       P.skip (== 0x0B)
       pure (IIf rt insT insF)
     0x0C -> fmap IBr labelidx
