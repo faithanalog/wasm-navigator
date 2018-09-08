@@ -1,3 +1,3 @@
-# [wasm-navigator][]
+# wasm-navigator
 
 A WASM Interpreter for Haskell
