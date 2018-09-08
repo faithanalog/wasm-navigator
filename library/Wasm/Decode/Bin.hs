@@ -1,4 +1,4 @@
-module Wasm.Bin where
+module Wasm.Decode.Bin where
 
 import Control.Applicative
 import qualified Data.Attoparsec.ByteString as P

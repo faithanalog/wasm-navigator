@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Wasm.Text.Type where
+module Wasm.Decode.Text where
 
 import Control.Applicative
 import Control.Monad
