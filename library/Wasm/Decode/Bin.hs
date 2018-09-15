@@ -141,8 +141,8 @@ limits = do
       _ -> undefined
   pure (Limits mn mx)
 
-memtype :: Parser Limits
-memtype = limits
+memtype :: Parser MemType
+memtype = fmap MemType limits
 
 elemtypeFromWord8 :: Word8 -> Maybe ElemType
 elemtypeFromWord8 0x70 = Just ETAnyFunc
@@ -390,8 +390,11 @@ instr = do
 end :: Parser ()
 end = P.skip (== 0x0B)
 
-expr :: Parser (Vector Instr)
-expr = fmap Vector.fromList (many instr) <* end
+expr :: Parser Expr
+expr = do
+  instrs <- many instr
+  end
+  pure (Expr (Vector.fromList instrs))
 
 typeidx :: Parser TypeIdx
 typeidx = fmap TypeIdx u32
@@ -413,3 +416,172 @@ localidx = fmap LocalIdx u32
 
 labelidx :: Parser LabelIdx
 labelidx = fmap LabelIdx u32
+
+section :: Word8 -> Parser a -> Parser a
+section n parser = do
+  P.skip (== n)
+  -- TODO size validation?
+  size <- u32
+  parser
+
+  {-body <- P.take (fromIntegral size)-}
+  {-case P.parse parser body of-}
+    {-Fail _ _ err -> fail err-}
+    {-Done i r | B.null i -> pure r-}
+    {-_ -> empty-}
+
+data Section
+  = SectionCustom !Text !ByteString
+  | SectionType !(Vector FuncType)
+  | SectionImport !(Vector Import)
+  | SectionFunc !(Vector TypeIdx)
+  | SectionTable !(Vector TableType)
+  | SectionMem !(Vector Mem)
+  | SectionGlobal !(Vector Global)
+  | SectionExport !(Vector Export)
+  | SectionStart !Start
+  | SectionElem !(Vector Elem)
+  | SectionCode !(Vector Code)
+
+
+customsec :: Parser Section
+customsec = do
+  P.skip (== 0)
+  size <- u32
+  body <- P.take (fromIntegral size)
+  case P.parseOnly (liftA2 CustomSection name P.takeByteString) of
+    Left err -> fail err
+    Right r -> pure r
+
+typesec :: Parser Section
+typesec = fmap SectionType (section 1 (vec functype))
+
+importsec :: Parser Section
+importsec = fmap SectionImport (section 2 (vec import'))
+
+-- Quote used to avoid clash with `import` keyword
+import' :: Parser Import
+import' = liftA3 Import text text importdesc
+
+importdesc :: Parser ImportDesc
+importdesc =
+  (P.skip (== 0) *> fmap ImportDescFunc funcidx) <|>
+  (P.skip (== 1) *> fmap ImportDescTable tabletype) <|>
+  (P.skip (== 2) *> fmap ImportDescMem memtype) <|>
+  (P.skip (== 3) *> fmap ImportDescGlobal globaltype)
+
+funcsec :: Parser Section
+funcsec = fmap SectionFunc (section 3 (vec typeidx))
+
+tablesec :: Parser Section
+tablesec = fmap SectionTable (section 4 (vec table))
+
+table :: Parser Table
+table = fmap Table tabletype
+
+memsec :: Parser Section
+memsec = fmap SectionMem (section 5 (vec mem))
+
+mem :: Parser Mem
+mem = fmap Mem memtype
+
+globalsec :: Parser Section
+globalsec = fmap SectionGlobal (section 6 (vec global))
+
+global :: Parser Global
+global = liftA2 Global globaltype expr
+
+exportsec :: Parser Section
+exportsec = fmap SectionExport (section 7 (vec export))
+
+export :: Parser Export
+export = liftA2 Export name exportdesc
+
+exportdesc :: Parser ExportDesc
+exportdesc =
+  (P.skip (== 0) *> fmap ExportDescFunc funcidx) <|>
+  (P.skip (== 1) *> fmap ExportDescTable tableidx) <|>
+  (P.skip (== 2) *> fmap ExportDescMem memidx) <|>
+  (P.skip (== 3) *> fmap ExportDescGlobal globalidx)
+
+startsec :: Parser Section
+startsec = fmap SectionStart (section 8 start)
+
+start :: Parser Start
+start = fmap Start funcidx
+
+elemsec :: Parser Section
+elemsec = fmap SectionElem (section 9 (vec elem'))
+
+-- Quote used to avoid clash with `elem` function from Prelude
+elem' :: Parser Elem
+elem' = liftA3 Elem tableidx expr (vec funcidx)
+
+codesec :: Parser Section
+codesec = fmap SectionCode (section 10 (vec code))
+
+code :: Parser Code
+code = do
+  -- TODO size validation?
+  size <- u32
+  func
+  where
+    func =
+      t <- fmap Vector.concat (vec locals)
+      e <- expr
+      pure (Code t e)
+    locals = do
+      n <- u32
+      t <- Vector.replicateM (fromIntegral n) valtype
+
+
+datasec :: Parser Section
+datasec = fmap SectionData (section 11 (vec data'))
+
+-- Quote used to avoid clash with `data` keyword
+data' :: Parser DataSegment
+data' = liftA3 DataSegment memidx expr bytevec
+
+magic :: Parser ()
+magic = void (P.string "\x00asm")
+
+version :: Parser ()
+version = void (P.string "\x01\x00\x00\x00")
+
+-- Quote used to avoid clash with `data` keyword
+module' :: Parser (Vector Section)
+module' = do
+  magic
+  version
+  custom
+  SectionType types <- typesec
+  custom
+  SectionImport imports <- importsec
+  custom
+  SectionFunc funcTypes <- funcsec
+  custom
+  SectionTable tables <- tablesec
+  custom
+  SectionMem mems <- memsec
+  custom
+  SectionGlobal globals <- globalsec
+  custom
+  SectionExport exportsec <- exportsec
+  custom
+  moduleStart <-
+    (do 
+      SectionStart s <- startsec
+      pure (Just s)) <|> Nothing
+  custom
+  SectionElem elems <- elemsec
+  custom
+  SectionCode funcDode <- codesec
+  custom
+  SectionData dataSegments <- datasec
+  custom
+  guard (length funcTypes == length funcCode)
+  guard (length start <= 1)
+  where
+    custom = skipMany customsec
+
+  

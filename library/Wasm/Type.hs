@@ -24,6 +24,10 @@ data Limits = Limits
   , limitsMax :: !(Maybe Word32)
   } deriving (Eq, Read, Show)
 
+newtype MemType = MemType
+  { getMemType :: !Limits
+  } deriving (Eq, Read, Show)
+
 data TableType = TableType
   { ttElemType :: !ElemType
   , ttLimits :: !Limits
@@ -49,32 +53,95 @@ data MemArg = MemArg
   } deriving (Eq, Read, Show)
 
 newtype TypeIdx = TypeIdx
-  { getTypeIdx :: Word32
+  { getTypeIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype FuncIdx = FuncIdx
-  { getFuncIdx :: Word32
+  { getFuncIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype TableIdx = TableIdx
-  { getTableIdx :: Word32
+  { getTableIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype MemIdx = MemIdx
-  { getMemIdx :: Word32
+  { getMemIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype GlobalIdx = GlobalIdx
-  { getGlobalIdx :: Word32
+  { getGlobalIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype LocalIdx = LocalIdx
-  { getLocalIdx :: Word32
+  { getLocalIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype LabelIdx = LabelIdx
-  { getLabelIdx :: Word32
+  { getLabelIdx :: !Word32
   } deriving (Eq, Read, Show, Ord)
+
+data Import = Import
+  { importModule :: !Text
+  , importName :: !Text
+  , importDesc :: !ImportDesc
+  } deriving (Eq, Read, Show)
+
+data ImportDesc
+  = ImportDescFunc !TypeIdx
+  | ImportDescTable !TableType
+  | ImportDescMem !MemType
+  | ImportDescGlobal !GlobalType
+  deriving (Eq, Read, Show)
+
+newtype Table = Table
+  { tableType :: !TableType
+  } deriving (Eq, Read, Show)
+
+newtype Mem = Mem
+  { memType :: !MemType
+  } deriving (Eq, Read, Show)
+
+data Global = Global
+  { globalType :: !GlobalType
+  , globalInit :: !Expr
+  } deriving (Eq, Read, Show)
+
+data Export = Export
+  { exportName :: !Text
+  , exportDesc :: !ExportDesc
+  } deriving (Eq, Read, Show)
+
+data ExportDesc
+  = ExportDescFunc !FuncIdx
+  | ExportDescTable !TableIdx
+  | ExportDescMem !MemIdx
+  | ExportDescGlobal !GlobalIdx
+  deriving (Eq, Read, Show)
+
+newtype Start = Start
+  { getStart :: !FuncIdx
+  } deriving (Eq, Read, Show)
+
+data Elem = Elem
+  { elemTable :: !TableIdx
+  , elemOffset :: !Expr
+  , elemInit :: !(Vector FuncIdx)
+  } deriving (Eq, Read, Show)
+
+data Code = Code
+  { codeLocals :: !(Vector ValType)
+  , codeBody :: !Expr
+  } deriving (Eq, Read, Show)
+
+newtype Expr = Expr
+  { getExpr :: !(Vector Instr)
+  } deriving (Eq, Read, Show)
+
+data DataSegment = DataSegment
+  { dataSegmentData :: !MemIdx
+  , dataSegmentOffset :: !Expr
+  , dataSegmentInit :: !ByteString
+  } deriving (Eq, Read, Show)
 
 data Instr
   = IUnreachable
