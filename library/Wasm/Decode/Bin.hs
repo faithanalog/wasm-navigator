@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Wasm.Decode.Bin where
 
 import Control.Applicative
@@ -7,6 +8,7 @@ import qualified Data.Binary.Get as Get
 import Data.Bits
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Lazy as ByteString.Lazy
+import Control.Monad
 import Data.Int
 import Data.Text (Text)
 import qualified Data.Text.Encoding as Text
@@ -430,18 +432,6 @@ section n parser = do
     {-Done i r | B.null i -> pure r-}
     {-_ -> empty-}
 
-data Section
-  = SectionCustom !Text !ByteString
-  | SectionType !(Vector FuncType)
-  | SectionImport !(Vector Import)
-  | SectionFunc !(Vector TypeIdx)
-  | SectionTable !(Vector TableType)
-  | SectionMem !(Vector Mem)
-  | SectionGlobal !(Vector Global)
-  | SectionExport !(Vector Export)
-  | SectionStart !Start
-  | SectionElem !(Vector Elem)
-  | SectionCode !(Vector Code)
 
 
 customsec :: Parser Section
@@ -449,7 +439,7 @@ customsec = do
   P.skip (== 0)
   size <- u32
   body <- P.take (fromIntegral size)
-  case P.parseOnly (liftA2 CustomSection name P.takeByteString) of
+  case P.parseOnly (liftA2 SectionCustom name P.takeByteString) body of
     Left err -> fail err
     Right r -> pure r
 
@@ -461,11 +451,11 @@ importsec = fmap SectionImport (section 2 (vec import'))
 
 -- Quote used to avoid clash with `import` keyword
 import' :: Parser Import
-import' = liftA3 Import text text importdesc
+import' = liftA3 Import name name importdesc
 
 importdesc :: Parser ImportDesc
 importdesc =
-  (P.skip (== 0) *> fmap ImportDescFunc funcidx) <|>
+  (P.skip (== 0) *> fmap ImportDescFunc typeidx) <|>
   (P.skip (== 1) *> fmap ImportDescTable tabletype) <|>
   (P.skip (== 2) *> fmap ImportDescMem memtype) <|>
   (P.skip (== 3) *> fmap ImportDescGlobal globaltype)
@@ -474,7 +464,7 @@ funcsec :: Parser Section
 funcsec = fmap SectionFunc (section 3 (vec typeidx))
 
 tablesec :: Parser Section
-tablesec = fmap SectionTable (section 4 (vec table))
+tablesec = fmap SectionTable (section 4 (vec tabletype))
 
 table :: Parser Table
 table = fmap Table tabletype
@@ -526,13 +516,13 @@ code = do
   size <- u32
   func
   where
-    func =
-      t <- fmap Vector.concat (vec locals)
+    func = do
+      t <- fmap join (vec locals)
       e <- expr
       pure (Code t e)
     locals = do
       n <- u32
-      t <- Vector.replicateM (fromIntegral n) valtype
+      Vector.replicateM (fromIntegral n) valtype
 
 
 datasec :: Parser Section
@@ -549,7 +539,7 @@ version :: Parser ()
 version = void (P.string "\x01\x00\x00\x00")
 
 -- Quote used to avoid clash with `data` keyword
-module' :: Parser (Vector Section)
+module' :: Parser Module
 module' = do
   magic
   version
@@ -566,22 +556,27 @@ module' = do
   custom
   SectionGlobal globals <- globalsec
   custom
-  SectionExport exportsec <- exportsec
+  SectionExport exports <- exportsec
   custom
   moduleStart <-
-    (do 
-      SectionStart s <- startsec
-      pure (Just s)) <|> Nothing
+    (do SectionStart s <- startsec
+        pure (Just s)) <|>
+    pure Nothing
   custom
   SectionElem elems <- elemsec
   custom
-  SectionCode funcDode <- codesec
+  SectionCode funcCode <- codesec
   custom
   SectionData dataSegments <- datasec
   custom
   guard (length funcTypes == length funcCode)
-  guard (length start <= 1)
+  let funcs = func funcTypes funcCode
+  pure
+    (Module types funcs tables mems globals elems dataSegments moduleStart imports exports)
   where
-    custom = skipMany customsec
+    custom = P.skipMany customsec
 
-  
+func :: Vector TypeIdx -> Vector Code -> Vector Func
+func =
+  Vector.zipWith
+    (\ftype fcode -> Func ftype (codeLocals fcode) (codeBody fcode))

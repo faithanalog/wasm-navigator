@@ -2,6 +2,8 @@ module Wasm.Type where
 
 import Data.Vector (Vector)
 import Data.Word
+import Data.ByteString (ByteString)
+import Data.Text (Text)
 
 data ValType
   = VTi32
@@ -25,7 +27,7 @@ data Limits = Limits
   } deriving (Eq, Read, Show)
 
 newtype MemType = MemType
-  { getMemType :: !Limits
+  { getMemType :: Limits
   } deriving (Eq, Read, Show)
 
 data TableType = TableType
@@ -53,31 +55,31 @@ data MemArg = MemArg
   } deriving (Eq, Read, Show)
 
 newtype TypeIdx = TypeIdx
-  { getTypeIdx :: !Word32
+  { getTypeIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype FuncIdx = FuncIdx
-  { getFuncIdx :: !Word32
+  { getFuncIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype TableIdx = TableIdx
-  { getTableIdx :: !Word32
+  { getTableIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype MemIdx = MemIdx
-  { getMemIdx :: !Word32
+  { getMemIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype GlobalIdx = GlobalIdx
-  { getGlobalIdx :: !Word32
+  { getGlobalIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype LocalIdx = LocalIdx
-  { getLocalIdx :: !Word32
+  { getLocalIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 newtype LabelIdx = LabelIdx
-  { getLabelIdx :: !Word32
+  { getLabelIdx :: Word32
   } deriving (Eq, Read, Show, Ord)
 
 data Import = Import
@@ -94,11 +96,11 @@ data ImportDesc
   deriving (Eq, Read, Show)
 
 newtype Table = Table
-  { tableType :: !TableType
+  { tableType :: TableType
   } deriving (Eq, Read, Show)
 
 newtype Mem = Mem
-  { memType :: !MemType
+  { memType :: MemType
   } deriving (Eq, Read, Show)
 
 data Global = Global
@@ -119,7 +121,7 @@ data ExportDesc
   deriving (Eq, Read, Show)
 
 newtype Start = Start
-  { getStart :: !FuncIdx
+  { getStart :: FuncIdx
   } deriving (Eq, Read, Show)
 
 data Elem = Elem
@@ -134,7 +136,7 @@ data Code = Code
   } deriving (Eq, Read, Show)
 
 newtype Expr = Expr
-  { getExpr :: !(Vector Instr)
+  { getExpr :: Vector Instr
   } deriving (Eq, Read, Show)
 
 data DataSegment = DataSegment
@@ -142,6 +144,40 @@ data DataSegment = DataSegment
   , dataSegmentOffset :: !Expr
   , dataSegmentInit :: !ByteString
   } deriving (Eq, Read, Show)
+
+data Func = Func
+  { funcType :: !TypeIdx
+  , funcLocals :: !(Vector ValType)
+  , funcBody :: !Expr
+  } deriving (Eq, Read, Show)
+
+data Module = Module
+  { moduleTypes :: !(Vector FuncType)
+  , moduleFuncs :: !(Vector Func)
+  , moduleTables :: !(Vector TableType)
+  , moduleMem :: !(Vector Mem)
+  , moduleGlobals :: !(Vector Global)
+  , moduleElem :: !(Vector Elem)
+  , moduleData :: !(Vector DataSegment)
+  , moduleStart :: !(Maybe Start)
+  , moduleImports :: !(Vector Import)
+  , moduleExports :: !(Vector Export)
+  } deriving (Eq, Read, Show)
+
+data Section
+  = SectionCustom !Text !ByteString
+  | SectionType !(Vector FuncType)
+  | SectionImport !(Vector Import)
+  | SectionFunc !(Vector TypeIdx)
+  | SectionTable !(Vector TableType)
+  | SectionMem !(Vector Mem)
+  | SectionGlobal !(Vector Global)
+  | SectionExport !(Vector Export)
+  | SectionStart !Start
+  | SectionElem !(Vector Elem)
+  | SectionCode !(Vector Code)
+  | SectionData !(Vector DataSegment)
+  deriving (Eq, Read, Show)
 
 data Instr
   = IUnreachable
